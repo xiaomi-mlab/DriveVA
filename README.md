@@ -18,8 +18,8 @@ Hao Cheng<sup>1</sup>
 <sup>4</sup>University of Bath
 </p>
 
-<a href="https://arxiv.org/abs/2604.04198">
-  <img src="https://img.shields.io/badge/Paper-DriveVA-b31b1b.svg?logo=arXiv" alt="DriveVA paper">
+<a href="https://link.springer.com/chapter/10.1007/978-3-032-37718-0_19">
+  <img src="https://img.shields.io/badge/Paper-ECCV_2026-b31b1b.svg" alt="DriveVA ECCV 2026 paper">
 </a>
 <a href="https://huggingface.co/mengmengliu1998/DriveVA">
   <img src="https://img.shields.io/badge/Model-Hugging%20Face-ffcc4d.svg?logo=huggingface" alt="DriveVA model">
@@ -29,6 +29,7 @@ Hao Cheng<sup>1</sup>
 
 ## News
 
+- **`September 12th, 2026`:** The [ECCV 2026 proceedings version of DriveVA](https://link.springer.com/chapter/10.1007/978-3-032-37718-0_19) is published on Springer Nature Link.
 - **`July 20th, 2026`:** DriveVA NavSIM training code released.
 - **`July 10th, 2026`:** DriveVA inference code and checkpoint released.
 - **`June 20th, 2026`:** DriveVA is accepted by ECCV 2026🎉🎉🎉!
@@ -321,10 +322,12 @@ and Diffusers.
 If DriveVA is useful for your research or applications, please consider citing:
 
 ```bibtex
-@article{liu2026driveva,
-  title={DriveVA: Video Action Models are Zero-Shot Drivers},
+@inproceedings{liu2026driveva,
+  title={Driveva: Video action models are zero-shot drivers},
   author={Liu, Mengmeng and Zhang, Diankun and Liu, Jiuming and Cui, Jianfeng and Xie, Hongwei and Chen, Guang and Ye, Hangjun and Yang, Michael Ying and Nex, Francesco and Cheng, Hao},
-  journal={arXiv preprint arXiv:2604.04198},
-  year={2026}
+  booktitle={European Conference on Computer Vision},
+  pages={315--335},
+  year={2026},
+  organization={Springer}
 }
 ```
