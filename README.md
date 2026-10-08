@@ -1,7 +1,7 @@
 <div align="center">
 
-<h1>DriveVA</h1>
-<h3>[🎉ECCV 26] DriveVA: Video Action Models are Zero-Shot Drivers</h3>
+<h1>DriveVA &amp; UNIVERSE</h1>
+<h3>[ECCV 2026 &amp; NeurIPS 26] Official code for DriveVA and UNIVERSE</h3>
 
 <p>
 Mengmeng Liu<sup>1</sup>, Diankun Zhang<sup>2</sup>, Jiuming Liu<sup>3</sup>,<br>
@@ -24,14 +24,23 @@ Hao Cheng<sup>1</sup>
 <a href="https://huggingface.co/mengmengliu1998/DriveVA">
   <img src="https://img.shields.io/badge/Model-Hugging%20Face-ffcc4d.svg?logo=huggingface" alt="DriveVA model">
 </a>
+<a href="https://arxiv.org/abs/2607.05133">
+  <img src="https://img.shields.io/badge/Paper-UNIVERSE-b31b1b.svg?logo=arXiv" alt="UNIVERSE paper">
+</a>
+<a href="https://huggingface.co/mengmengliu1998/UNIVERSE">
+  <img src="https://img.shields.io/badge/Model-UNIVERSE-ffcc4d.svg?logo=huggingface" alt="UNIVERSE model">
+</a>
 
 </div>
 
 ## News
 
+- **`October 8th, 2026`:** UNIVERSE training and inference code and checkpoint released.
+- **`September 25th, 2026`:** UNIVERSE is accepted by NeurIPS 2026.
 - **`September 12th, 2026`:** The [ECCV 2026 proceedings version of DriveVA](https://link.springer.com/chapter/10.1007/978-3-032-37718-0_19) is published on Springer Nature Link.
 - **`July 20th, 2026`:** DriveVA NavSIM training code released.
 - **`July 10th, 2026`:** DriveVA inference code and checkpoint released.
+- **`July 6th, 2026`:** UNIVERSE is released on [arXiv](https://arxiv.org/abs/2607.05133).
 - **`June 20th, 2026`:** DriveVA is accepted by ECCV 2026🎉🎉🎉!
 - **`Apr. 5th, 2026`:** DriveVA is released on [arXiv](https://arxiv.org/abs/2604.04198).
 
@@ -74,6 +83,15 @@ the prior world-model-based planner baseline reported in the paper.
 <b>Overall pipeline of DriveVA.</b>
 <img src="assets/driveva_pipeline.png" />
 </div>
+
+### UNIVERSE
+
+[UNIVERSE](https://arxiv.org/abs/2607.05133) extends DriveVA into a unified
+video-action framework with flexible mask-modulated video and trajectory
+generation. This repository provides its NavSIM v1 training code and inference
+support for NavSIM, nuScenes, and Bench2Drive. See the
+[UNIVERSE documentation](UNIVERSE.md) and download the
+[released checkpoint](https://huggingface.co/mengmengliu1998/UNIVERSE).
 
 ## Qualitative Results
 
@@ -304,7 +322,7 @@ inferred from standard environment variables such as `CUDA_VISIBLE_DEVICES`,
 
 ## Acknowledgments
 
-DriveVA builds on and is inspired by the following open-source projects and
+DriveVA and UNIVERSE build on and are inspired by the following open-source projects and
 benchmarks: Wan2.2, NAVSIM, nuScenes, nuPlan, Bench2Drive, FlashAttention,
 and Diffusers.
 
@@ -319,7 +337,7 @@ and Diffusers.
 
 ## Citation
 
-If DriveVA is useful for your research or applications, please consider citing:
+If DriveVA or UNIVERSE is useful for your research or applications, please consider citing:
 
 ```bibtex
 @inproceedings{liu2026driveva,
@@ -329,5 +347,12 @@ If DriveVA is useful for your research or applications, please consider citing:
   pages={315--335},
   year={2026},
   organization={Springer}
+}
+
+@article{liu2026universe,
+  title={UNIVERSE: Unified Video Action Models for Autonomous Driving with Flexible Mask-Modulated Modality Generation},
+  author={Liu, Mengmeng and Zhang, Diankun and Liu, Jiuming and Cui, Jianfeng and Xie, Hongwei and Chen, Guang and Ye, Hangjun and Nex, Francesco and Cheng, Hao and Yang, Michael Ying},
+  journal={arXiv preprint arXiv:2607.05133},
+  year={2026}
 }
 ```

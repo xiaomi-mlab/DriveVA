@@ -1,0 +1,129 @@
+# Environment variables override these defaults. `aliases` keep compatibility
+# with the previous training/eval launcher environment names.
+
+FULL_CKPT: "${REPO_ROOT}/checkpoints/UNIVERSE.safetensors"
+LOCAL_MODEL_PATH: "${REPO_ROOT}/models"
+OUTPUT_DIR: "${REPO_ROOT}/outputs/universe/navsim_v1"
+
+NAVSIM_LOG_PATH:
+  default: "/path/to/navsim_v1.1/navsim_logs/test"
+  aliases:
+    - EVAL_V1_NAVSIM_LOG_PATH
+    - EVAL_NAVSIM_LOG_PATH
+NAVSIM_SENSOR_BLOBS_PATH:
+  default: "/path/to/navsim_v1.1/sensor_blobs/test"
+  aliases:
+    - SENSOR_BLOBS_PATH
+    - EVAL_V1_SENSOR_BLOBS_PATH
+    - EVAL_SENSOR_BLOBS_PATH
+NAVSIM_METRIC_CACHE_PATH:
+  default: "/path/to/navsim_v1.1/metric_cache"
+  aliases:
+    - EVAL_V1_METRIC_CACHE_PATH
+    - EVAL_METRIC_CACHE_PATH
+NUPLAN_MAPS_ROOT: "/path/to/nuplan/dataset/maps"
+NUPLAN_DATA_ROOT: "/path/to/navsim_v1.1/dataset"
+
+SCENE_FILTER_YAML:
+  default: "${REPO_ROOT}/examples/wanvideo/driveva_infer/navsim_scene_filters/navtest.yaml"
+  aliases:
+    - EVAL_SCENE_FILTER_YAML
+SCENE_FILTER_YAML_FILTER_ONLY:
+  default: 1
+  aliases:
+    - EVAL_SCENE_FILTER_YAML_FILTER_ONLY
+
+NUM_INFERENCE_STEPS:
+  default: 3
+  aliases:
+    - EVAL_NUM_INFERENCE_STEPS
+CFG_SCALE:
+  default: 1.0
+  aliases:
+    - EVAL_CFG_SCALE
+SEED:
+  default: 0
+  aliases:
+    - EVAL_SEED
+NUM_HISTORY_FRAMES:
+  default: 5
+  aliases:
+    - EVAL_NUM_HISTORY_FRAMES
+NUM_FUTURE_FRAMES:
+  default: 10
+  aliases:
+    - EVAL_NUM_FUTURE_FRAMES
+MODEL_FUTURE_FRAMES:
+  default: 8
+  aliases:
+    - EVAL_MODEL_FUTURE_FRAMES
+TARGET_FPS:
+  default: 2
+  aliases:
+    - EVAL_TARGET_FPS
+HEIGHT: 480
+WIDTH: 832
+USE_FOCAL_UNIFICATION: 0
+FOCAL_TARGET_PX: auto
+TRAJECTORY_CONDITION_MODE: velocity
+SCENE_FUTURE_EXTRA_SECONDS:
+  default: 1.0
+  aliases:
+    - EVAL_SCENE_FUTURE_EXTRA_SECONDS
+    - EVAL_V1_SCENE_FUTURE_EXTRA_SECONDS
+PDM_NUM_POSES:
+  default: 40
+  aliases:
+    - EVAL_PDM_NUM_POSES
+PDM_INTERVAL_LENGTH:
+  default: 0.1
+  aliases:
+    - EVAL_PDM_INTERVAL_LENGTH
+TRAFFIC_AGENTS_POLICY: non_reactive
+LEGACY_SIMULATE_TRAFFIC_AGENTS:
+  default: 0
+  aliases:
+    - EVAL_LEGACY_SIMULATE_TRAFFIC_AGENTS
+INFER_TRAJECTORY_ONLY:
+  default: 1
+  aliases:
+    - EVAL_INFER_TRAJECTORY_ONLY
+
+SAVE_VIZ:
+  default: 0
+  aliases:
+    - EVAL_SAVE_VIZ
+VIZ_TOTAL_TOKENS:
+  default: 100
+  aliases:
+    - EVAL_VIZ_TOTAL_TOKENS
+VIZ_MAX_TOKENS:
+  default:
+  aliases:
+    - EVAL_VIZ_MAX_TOKENS
+DEBUG_PROMPT_STEPS:
+  default: 0
+  aliases:
+    - EVAL_DEBUG_PROMPT_STEPS
+NUM_EVAL_SHARDS:
+  default:
+  aliases:
+    - EVAL_NUM_SHARDS
+MAX_SCENES:
+  default:
+  aliases:
+    - EVAL_MAX_SCENES
+MAX_EVAL_TOKENS:
+  default:
+  aliases:
+    - EVAL_MAX_EVAL_TOKENS
+PRINT_ALIGNMENT_PARAMS:
+  default: 0
+  aliases:
+    - EVAL_PRINT_ALIGNMENT_PARAMS
+NUSCENES_METRIC_HORIZONS_S:
+  default: "1,2,3"
+  aliases:
+    - EVAL_NUSCENES_METRIC_HORIZONS_S
+
+UNIVERSE_TMPDIR: "${REPO_ROOT}/data/tmp/universe"

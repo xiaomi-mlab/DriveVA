@@ -15,6 +15,23 @@ from navsim.planning.training.abstract_feature_target_builder import AbstractFea
 from navsim.common.dataclasses import Scene, Trajectory
 from nuplan.planning.simulation.trajectory.trajectory_sampling import TrajectorySampling
 
+
+def _front_intrinsics(cams):
+    cam = getattr(cams, "cam_f0", None)
+    if cam is None:
+        return None
+    intrinsics = getattr(cam, "intrinsics", None)
+    if intrinsics is None:
+        return None
+    try:
+        arr = np.asarray(intrinsics, dtype=np.float32)
+    except Exception:
+        return None
+    if arr.shape != (3, 3) or not np.isfinite(arr).all():
+        return None
+    return arr
+
+
 def format_number(n, decimal_places=2):
     return f"{n:+.{decimal_places}f}" if abs(round(n, decimal_places)) > 1e-2 else "0.0"
 
@@ -108,12 +125,14 @@ class VideoDriveFeatureBuilder(AbstractFeatureBuilder):
         # ==== Front view / Surround view modes handled separately ====
         paths_front: List[str] = []
         paths_surround: List[List[str]] = []
+        intrinsics_front: List[Any] = []
         imgs_tensor: List[torch.Tensor] = []
         saw_path = False
 
         for i in idx_range:
             cams = agent_input.cameras[i]
             if self.view_mode == "front":
+                intrinsics_front.append(_front_intrinsics(cams))
                 mode, item = self._grab_cam(cams)
                 if mode == "path":
                     saw_path = True
@@ -141,6 +160,9 @@ class VideoDriveFeatureBuilder(AbstractFeatureBuilder):
             images = torch.stack(imgs_tensor, dim=0)  # (T,C,H,W)
             images = _resize_to_hw(images, 768, 1344)
             out["images"] = images
+
+        if self.view_mode == "front":
+            out["camera_intrinsics"] = intrinsics_front
 
         # ===== Rest of context remains unchanged =====
         ego_statuses = agent_input.ego_statuses
@@ -249,9 +271,11 @@ class TrajectoryTargetBuilder(AbstractTargetBuilder):
         frames_tensor: List[torch.Tensor] = []
         fut_paths_front: List[str] = []
         fut_paths_surround: List[List[str]] = []
+        future_intrinsics_front: List[Any] = []
 
         for cams in cams_seq:
             if self.view_mode == "front":
+                future_intrinsics_front.append(_front_intrinsics(cams))
                 mode, item = self._grab_cam(cams)
                 if mode == "path":
                     got_path = True
@@ -268,12 +292,19 @@ class TrajectoryTargetBuilder(AbstractTargetBuilder):
 
         if got_path:
             if self.view_mode == "front":
-                return {"trajectory": traj, "future_image_paths": fut_paths_front}
+                return {
+                    "trajectory": traj,
+                    "future_image_paths": fut_paths_front,
+                    "future_camera_intrinsics": future_intrinsics_front,
+                }
             else:
                 return {"trajectory": traj, "future_image_paths": fut_paths_surround}
         else:
             future_frames = torch.stack(frames_tensor, dim=0)
-            return {"trajectory": traj, "future_frames": future_frames}
+            out: Dict[str, Any] = {"trajectory": traj, "future_frames": future_frames}
+            if self.view_mode == "front":
+                out["future_camera_intrinsics"] = future_intrinsics_front
+            return out
 
 
 def _resize_to_hw(img: torch.Tensor, height: int = 704, width: int = 1280) -> torch.Tensor:

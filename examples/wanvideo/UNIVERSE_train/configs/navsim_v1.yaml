@@ -1,0 +1,129 @@
+# Environment variables override these defaults. Aliases keep compatibility with
+# older ORION/NAVSIM training launchers.
+
+FULL_CKPT:
+  default:
+  aliases:
+    - TRAIN_FULL_CKPT
+LOCAL_MODEL_PATH: "${REPO_ROOT}/models"
+OUTPUT_PATH:
+  default: "${REPO_ROOT}/outputs/universe/train_navsim_v1"
+  aliases:
+    - TRAIN_OUTPUT_PATH
+
+NAVSIM_LOG_PATH:
+  default: "/path/to/navsim_v1.1/navsim_logs/trainval"
+  aliases:
+    - TRAIN_NAVSIM_LOG_PATH
+SENSOR_BLOBS_PATH:
+  default: "/path/to/nuplan/dataset/nuplan-v1.1/sensor_blobs"
+  aliases:
+    - NAVSIM_SENSOR_BLOBS_PATH
+    - TRAIN_SENSOR_BLOBS_PATH
+CACHE_PATH:
+  default:
+  aliases:
+    - NAVSIM_CACHE_PATH
+USE_CACHE_ONLY: 0
+FORCE_CACHE_COMPUTATION: 0
+TRAIN_LOG_NAMES:
+  default:
+  aliases:
+    - LOG_NAMES
+MAX_SCENES:
+  default:
+  aliases:
+    - TRAIN_MAX_SCENES
+FRAME_INTERVAL: 1
+SKIP_MISSING_FILES: 1
+PRINT_NAVSIM_TOKENS: 0
+
+NUPLAN_MAPS_ROOT: "/path/to/nuplan/dataset/maps"
+NUPLAN_DATA_ROOT: "/path/to/navsim_v1.1/dataset"
+
+HEIGHT: 480
+WIDTH: 832
+NUM_HISTORY_FRAMES: 5
+NUM_FUTURE_FRAMES: 8
+TARGET_FPS: 2
+SURROUND_VIEW: 0
+USE_FOCAL_UNIFICATION: 0
+FOCAL_TARGET_PX: auto
+FOCAL_STATS_SAMPLES: 256
+
+LR:
+  default: 1e-4
+  aliases:
+    - LEARNING_RATE
+LR_SCHEDULER_TYPE: constant
+NUM_EPOCHS: 8
+GRADIENT_ACCUMULATION_STEPS:
+  default: 1
+  aliases:
+    - GRADIENT_ACCUM_STEPS
+    - GRAD_ACCUMULATION_STEPS
+    - GRAD_ACCUM_STEPS
+    - GRID_ACCUMULATION_STEPS
+DATASET_NUM_WORKERS: 4
+WEIGHT_DECAY: 0.01
+LOG_EVERY_STEPS: 50
+SAVE_STEPS: 500
+DDP_TIMEOUT_SECONDS: 3600
+WARMUP_STEPS: 100
+WARMUP_START_FACTOR: 0.001
+GRADIENT_CLIP_NORM:
+  default:
+  aliases:
+    - CLIP_GRAD_NORM
+
+USE_TRAJECTORY: 1
+TRAJECTORY_CONDITION_MODE: velocity
+TRAINABLE_MODELS: "dit,trajectory_encoder,trajectory_head"
+LORA_BASE_MODEL: "none"
+LORA_TARGET_MODULES: "q,k,v,o,ffn.0,ffn.2"
+LORA_RANK: 32
+LORA_CHECKPOINT:
+  default:
+  aliases:
+    - TRAIN_LORA_CHECKPOINT
+EXTRA_INPUTS: "longcat_video,trajectory,ego_vel"
+USE_GRADIENT_CHECKPOINTING: 1
+USE_GRADIENT_CHECKPOINTING_OFFLOAD: 0
+MAX_TIMESTEP_BOUNDARY: 1.0
+MIN_TIMESTEP_BOUNDARY: 0.0
+TRAIN_FUTURE_VIDEO_NOISE_ONLY: 1
+INFER_REPLACE_HISTORY_LATENTS_BEFORE_DECODE: 1
+
+USE_EMA: 1
+EMA_ON_CPU: 0
+EMA_DECAY: 0.999
+EMA_UPDATE_AFTER_STEP: 0
+EMA_UPDATE_EVERY: 1
+SAVE_EMA: 1
+SAVE_RAW_CKPT: 1
+
+AUTO_EVAL: 1
+AUTO_EVAL_CKPT_KIND:
+  default: ema
+  aliases:
+    - EVAL_CKPT_KIND
+AUTO_EVAL_STRICT: 0
+RUN_NAVSIM:
+  default: 1
+  aliases:
+    - AUTO_EVAL_NAVSIM_V1
+RUN_NUSCENES:
+  default: 1
+  aliases:
+    - AUTO_EVAL_NUSCENES
+RUN_B2D:
+  default: 1
+  aliases:
+    - AUTO_EVAL_B2D_VIZ
+INFER_ALL_OUTPUT_ROOT:
+  default: "${OUTPUT_PATH}/infer_each_ckpt"
+  aliases:
+    - EVAL_OUTPUT_ROOT
+
+TRAIN_LOG_FILE: "train.log"
+UNIVERSE_TMPDIR: "${REPO_ROOT}/data/tmp/universe"

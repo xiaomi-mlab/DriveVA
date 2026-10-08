@@ -1,0 +1,109 @@
+# Environment variables override these defaults. `aliases` keep compatibility
+# with the previous training/eval launcher environment names.
+
+FULL_CKPT: "${REPO_ROOT}/checkpoints/UNIVERSE.safetensors"
+LOCAL_MODEL_PATH: "${REPO_ROOT}/models"
+OUTPUT_DIR: "${REPO_ROOT}/outputs/universe/bench2drive"
+
+B2D_DATA_ROOT:
+  default: "${REPO_ROOT}/data/bench2drive"
+  aliases:
+    - BENCH2DRIVE_DATA_ROOT
+B2D_ANN_FILE:
+  default: "${REPO_ROOT}/data/infos/b2d_infos_val.pkl"
+  aliases:
+    - B2D_EVAL_ANN_FILE
+    - BENCH2DRIVE_ANN_FILE
+
+NUM_INFERENCE_STEPS:
+  default: 3
+  aliases:
+    - B2D_EVAL_NUM_INFERENCE_STEPS
+    - EVAL_NUM_INFERENCE_STEPS
+CFG_SCALE:
+  default: 1.0
+  aliases:
+    - B2D_EVAL_CFG_SCALE
+    - EVAL_CFG_SCALE
+SEED:
+  default: 0
+  aliases:
+    - B2D_EVAL_SEED
+    - EVAL_SEED
+
+NUM_HISTORY_FRAMES:
+  default: 5
+  aliases:
+    - B2D_EVAL_NUM_HISTORY_FRAMES
+    - EVAL_NUM_HISTORY_FRAMES
+NUM_FUTURE_FRAMES:
+  default: 8
+  aliases:
+    - B2D_EVAL_NUM_FUTURE_FRAMES
+    - EVAL_NUM_FUTURE_FRAMES
+MODEL_FUTURE_FRAMES:
+  default: 8
+  aliases:
+    - B2D_EVAL_MODEL_FUTURE_FRAMES
+    - EVAL_MODEL_FUTURE_FRAMES
+TARGET_FPS:
+  default: 2
+  aliases:
+    - B2D_EVAL_TARGET_FPS
+    - EVAL_TARGET_FPS
+B2D_ORIGINAL_FPS:
+  default: 10
+  aliases:
+    - B2D_EVAL_ORIGINAL_FPS
+B2D_FRAME_INTERVAL:
+  default: 2
+  aliases:
+    - B2D_EVAL_FRAME_INTERVAL
+
+HEIGHT: 480
+WIDTH: 832
+USE_FOCAL_UNIFICATION: 0
+FOCAL_TARGET_PX: auto
+USE_STRUCTURED_PROMPT: 0
+COMMAND_YAW_THRESHOLD_DEG: 8.0
+
+SAVE_VIZ:
+  default: 0
+  aliases:
+    - B2D_EVAL_SAVE_VIZ
+VIZ_MAX_SCENES:
+  default: 30
+  aliases:
+    - B2D_EVAL_VIZ_MAX_SCENES
+VIZ_PLOT_HEIGHT:
+  default: 420
+  aliases:
+    - B2D_EVAL_VIZ_PLOT_HEIGHT
+SAVE_PROJECTED_TRAJ_IMAGE: 1
+PROJECTION_DEBUG_STEPS:
+  default: 0
+  aliases:
+    - B2D_EVAL_PROJECTION_DEBUG_STEPS
+PROJECTION_DEBUG_TOKEN: ""
+DEBUG_PROMPT_STEPS:
+  default: 0
+  aliases:
+    - B2D_EVAL_DEBUG_PROMPT_STEPS
+
+MAX_SCENES:
+  default:
+  aliases:
+    - B2D_EVAL_MAX_SCENES
+COMPUTE_PLANNING_METRICS: 1
+PRINT_ERRORS: 1
+SHOW_EVAL_PROGRESS: 1
+SHOW_DENOISE_PROGRESS:
+  default: 0
+  aliases:
+    - B2D_EVAL_SHOW_DENOISE_PROGRESS
+SHOW_VAE_PROGRESS:
+  default: 0
+  aliases:
+    - B2D_EVAL_SHOW_VAE_PROGRESS
+
+UNIVERSE_TMPDIR: "${REPO_ROOT}/data/tmp/universe"

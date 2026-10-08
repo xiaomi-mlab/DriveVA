@@ -1,9 +1,10 @@
 # Checkpoints
 
-Put the released DriveVA full checkpoint here, for example:
+Put the released DriveVA and UNIVERSE full checkpoints here, for example:
 
 ```text
 checkpoints/pdms90_9.safetensors
+checkpoints/UNIVERSE.safetensors
 ```
 
 Inference loads only the `--full_ckpt` file. EMA setup, optimizer state, warmup

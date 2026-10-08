@@ -60,6 +60,93 @@ def flash_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads
     return x
 
 
+def _cat_nonempty_sequence_parts(parts):
+    valid_parts = [part for part in parts if part is not None and part.shape[1] > 0]
+    if len(valid_parts) == 0:
+        return None
+    if len(valid_parts) == 1:
+        return valid_parts[0]
+    return torch.cat(valid_parts, dim=1)
+
+
+def _run_group_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, num_heads: int) -> torch.Tensor:
+    if q.shape[1] == 0:
+        return q[:, :0]
+    if k is None or v is None or k.shape[1] == 0 or v.shape[1] == 0:
+        return torch.zeros_like(q)
+    return flash_attention(q=q, k=k, v=v, num_heads=num_heads)
+
+
+def mixed_visibility_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    *,
+    num_heads: int,
+    sequence_partition: Optional[dict],
+) -> torch.Tensor:
+    if not sequence_partition:
+        return flash_attention(q=q, k=k, v=v, num_heads=num_heads)
+
+    past_video_tokens = max(0, int(sequence_partition.get("past_video_tokens", 0)))
+    future_video_tokens = max(0, int(sequence_partition.get("future_video_tokens", 0)))
+    traj_prefix_tokens = max(0, int(sequence_partition.get("traj_prefix_tokens", 0)))
+    future_traj_tokens = max(0, int(sequence_partition.get("future_traj_tokens", 0)))
+
+    total_tokens = past_video_tokens + future_video_tokens + traj_prefix_tokens + future_traj_tokens
+    if total_tokens != int(q.shape[1]) or total_tokens != int(k.shape[1]) or total_tokens != int(v.shape[1]):
+        raise ValueError(
+            "Invalid mixed-visibility sequence partition: "
+            f"partition={sequence_partition}, q={tuple(q.shape)}, k={tuple(k.shape)}, v={tuple(v.shape)}"
+        )
+
+    pv_end = past_video_tokens
+    fv_end = pv_end + future_video_tokens
+    tp_end = fv_end + traj_prefix_tokens
+
+    q_pv = q[:, :pv_end]
+    q_fv = q[:, pv_end:fv_end]
+    q_tp = q[:, fv_end:tp_end]
+    q_ft = q[:, tp_end:]
+
+    k_pv = k[:, :pv_end]
+    k_fv = k[:, pv_end:fv_end]
+    k_tp = k[:, fv_end:tp_end]
+    k_ft = k[:, tp_end:]
+
+    v_pv = v[:, :pv_end]
+    v_fv = v[:, pv_end:fv_end]
+    v_tp = v[:, fv_end:tp_end]
+    v_ft = v[:, tp_end:]
+
+    q_past = _cat_nonempty_sequence_parts([q_pv, q_tp])
+    k_past = _cat_nonempty_sequence_parts([k_pv, k_tp])
+    v_past = _cat_nonempty_sequence_parts([v_pv, v_tp])
+
+    if q_past is None:
+        out_pv = q_pv[:, :0]
+        out_tp = q_tp[:, :0]
+    else:
+        out_past = _run_group_attention(q_past, k_past, v_past, num_heads)
+        out_pv = out_past[:, :past_video_tokens]
+        out_tp = out_past[:, past_video_tokens:]
+
+    out_fv = _run_group_attention(
+        q_fv,
+        _cat_nonempty_sequence_parts([k_pv, k_tp, k_fv]),
+        _cat_nonempty_sequence_parts([v_pv, v_tp, v_fv]),
+        num_heads,
+    )
+    out_ft = _run_group_attention(
+        q_ft,
+        _cat_nonempty_sequence_parts([k_pv, k_tp, k_ft]),
+        _cat_nonempty_sequence_parts([v_pv, v_tp, v_ft]),
+        num_heads,
+    )
+
+    return torch.cat([out_pv, out_fv, out_tp, out_ft], dim=1)
+
+
 def modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor):
     return (x * (1 + scale) + shift)
 
@@ -136,13 +223,22 @@ class SelfAttention(nn.Module):
         
         self.attn = AttentionModule(self.num_heads)
 
-    def forward(self, x, freqs):
+    def forward(self, x, freqs, sequence_partition: Optional[dict] = None):
         q = self.norm_q(self.q(x))
         k = self.norm_k(self.k(x))
         v = self.v(x)
         q = rope_apply(q, freqs, self.num_heads)
         k = rope_apply(k, freqs, self.num_heads)
-        x = self.attn(q, k, v)
+        if sequence_partition is None:
+            x = self.attn(q, k, v)
+        else:
+            x = mixed_visibility_attention(
+                q,
+                k,
+                v,
+                num_heads=self.num_heads,
+                sequence_partition=sequence_partition,
+            )
         return self.o(x)
 
 
@@ -210,7 +306,7 @@ class DiTBlock(nn.Module):
         self.modulation = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
         self.gate = GateModule()
 
-    def forward(self, x, context, t_mod, freqs):
+    def forward(self, x, context, t_mod, freqs, sequence_partition: Optional[dict] = None):
         has_seq = len(t_mod.shape) == 4
         chunk_dim = 2 if has_seq else 1
         # msa: multi-head self-attention  mlp: multi-layer perceptron
@@ -222,7 +318,7 @@ class DiTBlock(nn.Module):
                 shift_mlp.squeeze(2), scale_mlp.squeeze(2), gate_mlp.squeeze(2),
             )
         input_x = modulate(self.norm1(x), shift_msa, scale_msa)
-        x = self.gate(x, gate_msa, self.self_attn(input_x, freqs))
+        x = self.gate(x, gate_msa, self.self_attn(input_x, freqs, sequence_partition=sequence_partition))
         x = x + self.cross_attn(self.norm3(x), context)
         input_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
         x = self.gate(x, gate_mlp, self.ffn(input_x))

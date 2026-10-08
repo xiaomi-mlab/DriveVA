@@ -54,12 +54,28 @@ class WanVideoPipeline(BasePipeline):
         self.noise_y_offset = 5
         self.noise_y_scale = 12
         self.vel_norm_max = 20.0
-        # Trajectory normalization/encoding behavior used by the released checkpoint.
+        # Trajectory normalization/encoding behavior. Dataset entry points set
+        # the checkpoint-specific mode explicitly.
         # - trajectory_use_relative: whether to convert to relative deltas before normalization.
         self.trajectory_norm_mode = "driveva_odo"
         self.trajectory_use_relative = True
-        # Inference behavior switch: force decoded history frames to come from clean history latents.
+        # Training/inference behavior switches.
+        # - train_future_video_noise_only: exclude history-condition latents from video loss.
+        # - infer_replace_history_latents_before_decode: force decoded history frames to come
+        #   from clean history latents.
+        self.train_future_video_noise_only = False
         self.infer_replace_history_latents_before_decode = False
+        self.trajectory_condition_mode = "auto"
+        # Mixed video/trajectory token visibility:
+        # - history video tokens and trajectory prefix tokens can attend to each other.
+        # - future video tokens cannot attend to future trajectory tokens.
+        # - future trajectory tokens cannot attend to future video tokens.
+        self.use_mixed_latent_attention_mask = False
+        # During trajectory-only inference, skip future video latent denoising and only
+        # iteratively infer future trajectory latents.
+        self.infer_trajectory_only = False
+        self.pad_trajectory_only_video = True
+        self.infer_output_mode = "both"
         self.in_iteration_models = ("dit", "trajectory_encoder", "trajectory_head")
         self.in_iteration_models_2 = ("dit2", "trajectory_encoder", "trajectory_head")
         self.unit_runner = PipelineUnitRunner()
@@ -100,6 +116,65 @@ class WanVideoPipeline(BasePipeline):
             return True, False
         return False, bool(has_velocity)
 
+    def _build_mixed_sequence_partition(
+        self,
+        *,
+        num_video_tokens: int,
+        num_cond_tokens: int,
+        traj_len: int,
+        traj_prefix_len: int,
+    ) -> Optional[Dict[str, int]]:
+        if not bool(getattr(self, "use_mixed_latent_attention_mask", False)):
+            return None
+
+        num_video_tokens = max(0, int(num_video_tokens))
+        num_cond_tokens = max(0, min(int(num_cond_tokens), num_video_tokens))
+        traj_len = max(0, int(traj_len))
+        traj_prefix_len = max(0, min(int(traj_prefix_len), traj_len))
+        future_video_tokens = max(0, num_video_tokens - num_cond_tokens)
+        future_traj_tokens = max(0, traj_len - traj_prefix_len)
+
+        if num_cond_tokens <= 0 and traj_prefix_len <= 0 and future_traj_tokens <= 0:
+            return None
+
+        return {
+            "past_video_tokens": num_cond_tokens,
+            "future_video_tokens": future_video_tokens,
+            "traj_prefix_tokens": traj_prefix_len,
+            "future_traj_tokens": future_traj_tokens,
+        }
+
+    @staticmethod
+    def _pad_video_to_length(video: Any, target_length: int) -> Any:
+        if not isinstance(video, list):
+            return video
+        target_length = max(0, int(target_length))
+        if len(video) >= target_length or target_length <= 0:
+            return video
+        if len(video) == 0:
+            return video
+        last_frame = video[-1]
+        while len(video) < target_length:
+            video.append(last_frame.copy() if hasattr(last_frame, "copy") else last_frame)
+        return video
+
+    @staticmethod
+    def _normalize_infer_output_mode(output_mode: Optional[str], infer_trajectory_only: bool) -> str:
+        if output_mode is None:
+            return "both"
+        mode = str(output_mode).strip().lower().replace("-", "_")
+        aliases = {
+            "traj": "trajectory",
+            "trajectory_only": "trajectory",
+            "video_only": "video",
+            "video_and_trajectory": "both",
+            "all": "both",
+        }
+        mode = aliases.get(mode, mode)
+        if mode not in {"trajectory", "video", "both"}:
+            raise ValueError(f"infer output mode must be trajectory, video, or both; got {output_mode!r}")
+        return mode
+
     def _to_relative_trajectory(self, traj: torch.Tensor) -> torch.Tensor:
         """Convert absolute positions to relative deltas, keep the first point absolute."""
         if traj.ndim == 2:
@@ -121,11 +196,11 @@ class WanVideoPipeline(BasePipeline):
         return torch.cumsum(traj_rel, dim=1)
 
     def norm_trajectory(self, traj: torch.Tensor, is_relative: bool = False, target_fps: Optional[float] = None) -> torch.Tensor:
-        """DriveVA normalization to [-1, 1] for x/y/heading."""
+        """Normalize x/y/heading to the range used by the released checkpoints."""
         traj_xy = traj[..., :2]
         x = traj_xy[..., 0:1]
         y = traj_xy[..., 1:2]
-        # Match the DriveVA trajectory normalization used by the released checkpoint.
+        # Match the trajectory normalization used by the released checkpoints.
         x = 2 * (x + 1.57) / 66.74 - 1
         y = 2 * (y + 19.68) / 42.0 - 1
         if traj.shape[-1] > 2:
@@ -136,7 +211,7 @@ class WanVideoPipeline(BasePipeline):
 
 
     def denorm_trajectory(self, traj: torch.Tensor, is_relative: bool = False, target_fps: Optional[float] = None) -> torch.Tensor:
-        """Inverse of DriveVA normalization for x/y/heading."""
+        """Inverse of the released-checkpoint trajectory normalization."""
         traj_xy = traj[..., :2]
         x = traj_xy[..., 0:1]
         y = traj_xy[..., 1:2]
@@ -389,7 +464,7 @@ class WanVideoPipeline(BasePipeline):
         pipe.vae = model_manager.fetch_model("wan_video_vae")
         pipe.image_encoder = model_manager.fetch_model("wan_video_image_encoder")
         if use_trajectory and pipe.dit is not None:
-            # DriveVA adds lightweight trajectory tokens beside Wan's video
+            # DriveVA and UNIVERSE add lightweight trajectory tokens beside Wan's video
             # patch tokens; the encoder/head are loaded from the full checkpoint.
             pipe.trajectory_encoder = TrajectoryEncoder(point_dim=3, output_dim=pipe.dit.dim).to(
                 device=device, dtype=torch_dtype
@@ -635,6 +710,7 @@ class WanVideoPipeline(BasePipeline):
         ego_vel: Optional[torch.Tensor] = None,
         history_positions: Optional[torch.Tensor] = None,
         trajectory_len: Optional[int] = None,
+        output_mode: Optional[str] = None,
         # VAE tiling
         tiled: Optional[bool] = True,
         tile_size: Optional[Tuple[int, int]] = (30, 52),
@@ -690,7 +766,38 @@ class WanVideoPipeline(BasePipeline):
         traj_noisy = None
         vel_noisy = None
         hist_noisy = None
-        if self.trajectory_encoder is not None:
+        legacy_trajectory_only = output_mode is None and bool(getattr(self, "infer_trajectory_only", False))
+        infer_mode = self._normalize_infer_output_mode(
+            output_mode,
+            bool(getattr(self, "infer_trajectory_only", False)),
+        )
+        trajectory_only_infer = False
+        requested_num_frames = int(num_frames)
+        if (
+            (infer_mode == "trajectory" or legacy_trajectory_only)
+            and trajectory_len is not None
+        ):
+            latents_value = inputs_shared.get("latents")
+            longcat_latents_value = inputs_shared.get("longcat_latents")
+            if (
+                torch.is_tensor(latents_value)
+                and latents_value.ndim == 5
+                and torch.is_tensor(longcat_latents_value)
+                and longcat_latents_value.ndim == 5
+            ):
+                cond_t = min(int(latents_value.shape[2]), int(longcat_latents_value.shape[2]))
+                if cond_t > 0:
+                    trajectory_only_infer = True
+                    inputs_shared["traj_rope_total_latent_frames"] = int(latents_value.shape[2])
+                    inputs_shared["latents"] = latents_value[:, :, :cond_t].clone()
+                    if torch.is_tensor(inputs_shared.get("latents_for_resad")):
+                        inputs_shared["latents_for_resad"] = inputs_shared["latents"].clone()
+                    if torch.is_tensor(inputs_shared.get("noise")):
+                        inputs_shared["noise"] = inputs_shared["noise"][:, :, :cond_t].clone()
+                    if torch.is_tensor(inputs_shared.get("input_latents")):
+                        inputs_shared["input_latents"] = inputs_shared["input_latents"][:, :, :cond_t].clone()
+                    inputs_shared["trajectory_only_infer"] = True
+        if self.trajectory_encoder is not None and infer_mode != "video":
             # At inference we start from noisy future trajectory points and run
             # the same scheduler updates used for video latents.
             traj_len = None
@@ -792,13 +899,18 @@ class WanVideoPipeline(BasePipeline):
                 noise_pred = noise_pred_posi
 
             # Scheduler
-            step_latents = self.scheduler.step(noise_pred, self.scheduler.timesteps[progress_id], inputs_shared["latents"])
-            if first_step_latents is None and return_first_step_latents:
-                first_step_latents = step_latents.clone()
-            inputs_shared["latents"] = step_latents
-            inputs_shared["latents_for_resad"] = step_latents.clone()
-            if "first_frame_latents" in inputs_shared:
-                inputs_shared["latents"][:, :, 0:1] = inputs_shared["first_frame_latents"]
+            if trajectory_only_infer:
+                if first_step_latents is None and return_first_step_latents:
+                    first_step_latents = inputs_shared["latents"].clone()
+                inputs_shared["latents_for_resad"] = inputs_shared["latents"].clone()
+            else:
+                step_latents = self.scheduler.step(noise_pred, self.scheduler.timesteps[progress_id], inputs_shared["latents"])
+                if first_step_latents is None and return_first_step_latents:
+                    first_step_latents = step_latents.clone()
+                inputs_shared["latents"] = step_latents
+                inputs_shared["latents_for_resad"] = step_latents.clone()
+                if "first_frame_latents" in inputs_shared:
+                    inputs_shared["latents"][:, :, 0:1] = inputs_shared["first_frame_latents"]
             if traj_noisy is not None and traj_pred_posi is not None:
                 traj_pred_points = traj_pred_posi
                 prefix_len = int(inputs_shared.get("traj_prefix_len", 1 if vel_noisy is not None else 0))
@@ -829,9 +941,13 @@ class WanVideoPipeline(BasePipeline):
                     clean_hist = longcat_latents.to(device=latents.device, dtype=latents.dtype)
                     latents[:, :, :cond_t] = clean_hist[:, :, :cond_t]
         # Decode
-        self.load_models_to_device(['vae'])
-        video = self.vae.decode(inputs_shared["latents"], device=self.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
-        video = self.vae_output_to_video(video)
+        video = None
+        if infer_mode != "trajectory":
+            self.load_models_to_device(['vae'])
+            video = self.vae.decode(inputs_shared["latents"], device=self.device, tiled=tiled, tile_size=tile_size, tile_stride=tile_stride)
+            video = self.vae_output_to_video(video)
+            if trajectory_only_infer and bool(getattr(self, "pad_trajectory_only_video", False)):
+                video = self._pad_video_to_length(video, requested_num_frames)
         self.load_models_to_device([])
         if traj_noisy is not None:
             target_fps = inputs_shared.get("target_fps", getattr(self, "target_fps", None))
@@ -845,6 +961,7 @@ class WanVideoPipeline(BasePipeline):
         vel_denoised = inputs_shared.get("vel_denoised")
 
         if return_first_step_latents or return_inputs_shared:
+            inputs_shared["infer_output_mode"] = infer_mode
             if return_inputs_shared and "context" in inputs_posi:
                 inputs_shared["context"] = inputs_posi["context"]
             if return_first_step_latents and return_inputs_shared:
@@ -852,6 +969,14 @@ class WanVideoPipeline(BasePipeline):
             if return_first_step_latents:
                 return video, first_step_latents
             return video, inputs_shared
+        if infer_mode == "trajectory":
+            if traj_denoised is None and vel_denoised is None:
+                return None
+            if vel_denoised is not None:
+                return traj_denoised, vel_denoised
+            return traj_denoised
+        if infer_mode == "video":
+            return video
         if traj_denoised is not None or vel_denoised is not None:
             return video, traj_denoised, vel_denoised
         return video
@@ -1602,6 +1727,12 @@ def model_fn_wan_video(
     else:
         num_cond_latents = 0
 
+    diffusion_timestep = timestep
+    traj_rope_total_latent_frames = max(
+        int(kwargs.get("traj_rope_total_latent_frames", latents.shape[2])),
+        int(latents.shape[2]),
+    )
+
     if num_cond_latents > 0:
         timestep = torch.concat([
             torch.zeros((num_cond_latents, latents.shape[3] * latents.shape[4] // 4), dtype=latents.dtype, device=latents.device),
@@ -1661,14 +1792,61 @@ def model_fn_wan_video(
     traj_len = 0
     if traj_tokens is not None:
         traj_len = traj_tokens.shape[1]
+        traj_has_vel = bool(kwargs.get("traj_has_vel", False))
+        if ("traj_has_vel" not in kwargs) and (not traj_has_vel):
+            traj_has_vel = kwargs.get("ego_vel", None) is not None
+        traj_prefix_len = int(kwargs.get("traj_prefix_len", 1 if traj_has_vel else 0))
+        traj_prefix_mode = kwargs.get("traj_prefix_mode", None)
+        if traj_prefix_mode is None and traj_has_vel:
+            traj_prefix_mode = "velocity"
         if traj_tokens.dtype != dit_dtype:
             traj_tokens = traj_tokens.to(dit_dtype)
         # Append planning tokens to the DiT sequence so attention can exchange
         # information between video patches and future trajectory points.
         x = torch.concat([x, traj_tokens], dim=1)
         if len(t_mod.shape) == 4:
-            t_traj = t_mod[:, :1].expand(t_mod.shape[0], traj_len, 6, dit.dim)
+            use_partitioned_traj_timestep = bool(
+                pipe is not None and getattr(pipe, "use_mixed_latent_attention_mask", False)
+            )
+            if not use_partitioned_traj_timestep:
+                # Preserve the DriveVA checkpoint's original time modulation.
+                t_traj = t_mod[:, :1].expand(t_mod.shape[0], traj_len, 6, dit.dim)
+            else:
+                motion_mod = None
+                if motion_bucket_id is not None and motion_controller is not None:
+                    motion_mod = motion_controller(motion_bucket_id).unflatten(1, (6, dit.dim)).unsqueeze(1)
+
+                def _build_traj_token_t_mod(step_value: torch.Tensor) -> torch.Tensor:
+                    step_mod = dit.time_projection(
+                        dit.time_embedding(sinusoidal_embedding_1d(dit.freq_dim, step_value))
+                    ).unflatten(1, (6, dit.dim)).unsqueeze(1)
+                    if motion_mod is not None:
+                        step_mod = step_mod + motion_mod
+                    if step_mod.dtype != dit_dtype:
+                        step_mod = step_mod.to(dit_dtype)
+                    return step_mod
+
+                traj_t_parts = []
+                if traj_prefix_len > 0:
+                    prefix_step = (
+                        torch.zeros_like(diffusion_timestep)
+                        if num_cond_latents > 0
+                        else diffusion_timestep
+                    )
+                    prefix_t_mod = _build_traj_token_t_mod(prefix_step)
+                    traj_t_parts.append(prefix_t_mod.expand(prefix_t_mod.shape[0], traj_prefix_len, 6, dit.dim))
+                future_traj_len = max(traj_len - traj_prefix_len, 0)
+                if future_traj_len > 0:
+                    future_t_mod = _build_traj_token_t_mod(diffusion_timestep)
+                    traj_t_parts.append(future_t_mod.expand(future_t_mod.shape[0], future_traj_len, 6, dit.dim))
+                t_traj = (
+                    torch.cat(traj_t_parts, dim=1)
+                    if len(traj_t_parts) > 0
+                    else t_mod[:, :0]
+                )
             t_mod = torch.cat([t_mod, t_traj], dim=1)
+    else:
+        traj_prefix_len = 0
 
     if x.dtype != dit_dtype:
         x = x.to(dit_dtype)
@@ -1687,7 +1865,7 @@ def model_fn_wan_video(
         if traj_prefix_mode is None and traj_has_vel:
             traj_prefix_mode = "velocity"
 
-        f_rope = f
+        f_rope = traj_rope_total_latent_frames
         # Align trajectory tokens to future frames in the same f-scale as RoPE.
         start_frame = max(num_cond_latents, 0)
         end_frame = max(f_rope - 1, 0)
@@ -1742,12 +1920,22 @@ def model_fn_wan_video(
             pad_shape = chunks[0].shape[1] - chunks[-1].shape[1]
             chunks = [torch.nn.functional.pad(chunk, (0, 0, 0, chunks[0].shape[1]-chunk.shape[1]), value=0) for chunk in chunks]
             x = chunks[get_sequence_parallel_rank()]
+    sequence_partition = None
+    if pipe is not None and hasattr(pipe, "_build_mixed_sequence_partition"):
+        sequence_partition = pipe._build_mixed_sequence_partition(
+            num_video_tokens=int(f * h * w),
+            num_cond_tokens=int(num_cond_latents * h * w),
+            traj_len=int(traj_len),
+            traj_prefix_len=int(traj_prefix_len),
+        )
+        if use_unified_sequence_parallel and dist.is_initialized() and dist.get_world_size() > 1:
+            sequence_partition = None
     if tea_cache_update:
         x = tea_cache.update(x)
     else:
         def create_custom_forward(module):
             def custom_forward(*inputs):
-                return module(*inputs)
+                return module(*inputs, sequence_partition=sequence_partition)
             return custom_forward
         # Count tokens that belong to clean conditioned history frames.
         num_cond_tokens = 0
@@ -1770,7 +1958,7 @@ def model_fn_wan_video(
                     use_reentrant=False,
                 )
             else:
-                x = block(x, context, t_mod, freqs)
+                x = block(x, context, t_mod, freqs, sequence_partition=sequence_partition)
             
             # VACE
             if vace_context is not None and block_id in vace.vace_layers_mapping:

@@ -24,15 +24,15 @@ __MACOSX/
 *.swo
 
 # Local datasets, model weights, and generated outputs
-data/
-models/
-outputs/
-eval_results/
-logs/
-wandb/
-runs/
-tmp/
-temp/
+/data/
+/models/
+/outputs/
+/eval_results/
+/logs/
+/wandb/
+/runs/
+/tmp/
+/temp/
 
 # Checkpoints and large model artifacts
 checkpoints/*
